@@ -7,7 +7,7 @@ This repository contains implemented method used in paper
 #### Charles University, Prague, Czech Republic
 
 Subdirectories:
-* Cfun: implemented ".c" functions
+* Cfun: implemented ".c" functions, ".h" headers, ".o" and ".dll" (for Windows)
 * Rfun: implemented ".R" functions and scripts
 * RData: saved ".RData" files
 
