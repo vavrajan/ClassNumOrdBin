@@ -42,7 +42,7 @@ PermuteClusterLabels <- function(mcmc, perm){
       for(k in 1:mcmc$K){
         pnames <- gsub("\\(1\\)", paste0("\\(",perm[[ch]][k],"\\)"), cnames)
         knames <- gsub("\\(1\\)", paste0("\\(",k,"\\)"), cnames)
-        aux[aux$chain==ch, knames] <- mcmc$all[aux$chain==ch, pnames]
+        aux[, knames] <- mcmc$all[mcmc$all$chain==ch, pnames]
       } 
       mcmc$all[mcmc$all$chain==ch, ] <- aux
     }

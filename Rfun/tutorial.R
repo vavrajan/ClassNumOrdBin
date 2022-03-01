@@ -15,8 +15,7 @@
 ### - ./Rfun - contains all R functions
 ### - ./Cfun - contains all C functions
 
-ROOT <- "C:/Users/Vavra/Desktop/SKOLA/PhD studium/Disertacka/Classification_final/"
-ROOT <- "M:/PhD studium/Disertacka/Classification_final/"
+ROOT <- "path/to/your/directory/ClassNumOrdBin/"
 ### set the paths to subdirectories
 CROOT <- paste0(ROOT, "Cfun/")  # C functions
 RROOT <- paste0(ROOT, "Rfun/")  # R functions
@@ -394,8 +393,9 @@ howsave = "matrix" # parameter describing the way how sampled parameters should 
 
 ## Initial values supplied
 # sampling Nchains chains - one after another (not in parallel)
-# you can create a function that samples one chain with given inits
-# to be called in parallel (see library(parallel))
+# one can create a function that samples one chain with given inits
+# to be called in parallel (see example below)
+set.seed(123456)
 system.time(
   mcmc <- GibbsClassNumOrdBin(Y = Y, X = X, K = K, 
                               spec = spec, calc = calc, whatsave = whatsave,
@@ -405,10 +405,12 @@ system.time(
                               inits = rinits, # initial values supplied
                               howsave = howsave)
 )
+# about 93 sec
 
 ## Continue in sampling, where the last chain stopped
 # mcmc$last has the same structure as mcmc$inits
 # it however contains values from the last step
+set.seed(123456)
 system.time(
   mcmc <- GibbsClassNumOrdBin(Y = Y, X = X, K = K, 
                               spec = spec, calc = calc, whatsave = whatsave,
@@ -418,15 +420,96 @@ system.time(
                               inits = mcmc$last, # mcmc$last as inits
                               howsave = howsave)
 )
+# about 93 sec
 
-## What if I would like to continue in sampling, 
+## OR DO IT IN PARALLEL
+## function for parallel computation
+SampleChainsParallel <- function(chain = 1, 
+                                 n = n, Y = Y, XX = X, K = K,
+                                 spec = spec, calc = calc, whatsave = whatsave,
+                                 Nums = Nums, Ords = Ords, Bins = Bins, Id = Id,
+                                 Formula = Formula, inits = inits,
+                                 M = M, B = B, howsave = howsave,
+                                 RROOT, CROOT){
+  chinits <- list()
+  chinits[[1]] <- inits[[chain]]
+  
+  source(paste0(RROOT, "function_GibbsClassNumOrdBin.R"))
+  source(paste0(RROOT, "FromCtoList.R"))
+  source(paste0(RROOT, "FromListtoC.R"))
+  source(paste0(RROOT, "FromCtoMatrix.R"))
+  source(paste0(RROOT, "FromMatrixtoC.R"))
+  
+  library("mvtnorm")
+  
+  dyn.load(paste0(CROOT, "class_num_ord_bin.dll"))
+  #dyn.load(paste0(CROOT, "class_num_ord_bin.so"))
+  
+  return(
+    GibbsClassNumOrdBin(Y = Y, X = XX, K = K,
+                        spec = spec, calc = calc, whatsave = whatsave,
+                        Nums = Nums, Ords = Ords, Bins = Bins, Id = Id,
+                        Formula = Formula, inits = chinits,
+                        M = M, B = B, Nchains = 1,
+                        howsave = howsave)
+  )
+  
+}
+
+library(parallel)
+myCluster <- makeCluster(Nchains) 
+#myCluster <- makeCluster(Nchains, type = "FORK")      
+clusterSetRNGStream(myCluster, 123456)
+
+## parallel computation of chains
+system.time(
+  mcmcs <- parLapply(myCluster, 1:Nchains, SampleChainsParallel, 
+                     n = n, Y = Y, XX = X, K = K,
+                     spec = spec, calc = calc, whatsave = whatsave,
+                     Nums = Nums, Ords = Ords, Bins = Bins, Id = Id,
+                     Formula = Formula, inits = mcmc$last,
+                     M = M, B = B, howsave = howsave,
+                     RROOT = RROOT, CROOT = CROOT)
+)
+# about 28 sec
+stopCluster(myCluster)
+
+### Getting the chains together
+if(howsave == "matrix"){
+  mcmc <- mcmcs[[1]]
+  if(Nchains > 1){
+    for(chain in 2:Nchains){
+      mcmcs[[chain]]$all[,"chain"] <- rep(chain, dim(mcmcs[[chain]]$all)[1])
+      mcmc$all <- rbind(mcmc$all, mcmcs[[chain]]$all)
+      mcmc$inits[[chain]] <- mcmcs[[chain]]$inits[[1]]
+      mcmc$last[[chain]] <- mcmcs[[chain]]$last[[1]]
+    }
+  }
+  mcmc$Nchains <- Nchains
+}
+
+if(howsave == "list"){
+  mcmc <- mcmcs[[1]]
+  if(Nchains > 1){
+    for(chain in 2:Nchains){
+      mcmc[[chain]] <- mcmcs[[chain]][[1]]
+      mcmc$inits[[chain]] <- mcmcs[[chain]]$inits[[1]]
+      mcmc$last[[chain]] <- mcmcs[[chain]]$last[[1]]
+    }
+  }
+  mcmc$Nchains <- Nchains
+}
+
+
+
+## What if I would like to start the sampling, 
 ## however, this time I would like Sigma to be cluster-specific?
 
 # first change the cluster-specification
 spec["InvSigma"] <- T
 
 # and adjust the initial values
-Sginits <- mcmc$last 
+Sginits <- rinits
 # the inits for InvSigma have to be changed to list of K matrices
 for(ch in 1:Nchains){
   # initiate with the same matrix in all clusters
@@ -437,6 +520,7 @@ for(ch in 1:Nchains){
   }
 }
 
+set.seed(123456)
 system.time(
   mcmcSg <- GibbsClassNumOrdBin(Y = Y, X = X, K = K, 
                                 spec = spec, calc = calc, whatsave = whatsave,
@@ -448,6 +532,7 @@ system.time(
 )
 
 ## Our generated data have actually beta common to all clusters
+## but not in the model specification
 # change the specificity of beta
 spec["beta"] <- F
 # also change back the cluster-specificity of InvSigma (due to example above)
@@ -469,6 +554,7 @@ for(ch in 1:Nchains){
   }
 }
 
+set.seed(123456)
 system.time(
   mcmcb <- GibbsClassNumOrdBin(Y = Y, X = X, K = K, 
                                 spec = spec, calc = calc, whatsave = whatsave,
@@ -489,6 +575,7 @@ system.time(
 
 # regardless of InitType the initial cluster allocations are sampled from Unif(0, 1, ..., K-1)
 spec["beta"] <- T
+set.seed(123456)
 system.time(
   mcmc <- GibbsClassNumOrdBin(Y = Y, X = X, K = K, 
                               spec = spec, calc = calc, whatsave = whatsave,
@@ -773,7 +860,7 @@ for(ch in 1:Nchains){
   dev.off()
 }
 
-## beta - version with not group-specific beta
+## beta - version with not group-specific beta (use the other sample mcmcb)
 # remove: kspec = k
 {
   par(mfrow = c(sum(nY), nfix[1]))
@@ -859,7 +946,7 @@ for(ch in 1:Nchains){
 ## tau
 # not cluster-specific, but Num-outcome-specific, only one-dimensional
 # hence: what = "tau", yspec = Nums[1], else missing
-pdf(paste0(WD, "Figures/mcmc_K_", K, "_tau.pdf"), 
+pdf(paste0(FIG, "mcmc_K_", K, "_tau.pdf"), 
     width = 7, height = 6)
 plot.all(mcmc = mcmc, thin = figthin,
          what = "tau", yspec = Nums[1], MaxLag = 30,
@@ -871,7 +958,7 @@ dev.off()
 # hence: what = "gamma", yspec = Ords[1], dimspec = 1
 y = Ords[1]
 for(y in c(Ords)){
-  pdf(paste0(WD, "Figures/mcmc_gamma_K_", K, "_", y, ".pdf"), 
+  pdf(paste0(FIG, "mcmc_gamma_K_", K, "_", y, ".pdf"), 
       width = 7, height = 6)
   plot.all(mcmc = mcmc, thin = figthin,
            what = "gamma", yspec = y, dimspec = 1, MaxLag = 30,
@@ -893,6 +980,50 @@ system.time(
                               inits = mcmc$last, # mcmc$last as inits
                               howsave = howsave)
 )
+
+## OR IN PARALLEL
+myCluster <- makeCluster(Nchains) 
+#myCluster <- makeCluster(Nchains, type = "FORK")      
+clusterSetRNGStream(myCluster, 123456)
+
+system.time(
+  mcmcs <- parLapply(myCluster, 1:Nchains, SampleChainsParallel, 
+                     n = n, Y = Y, XX = X, K = K,
+                     spec = spec, calc = calc, whatsave = whatsave,
+                     Nums = Nums, Ords = Ords, Bins = Bins, Id = Id,
+                     Formula = Formula, inits = mcmc$last,
+                     M = M, B = B, howsave = howsave,
+                     RROOT = RROOT, CROOT = CROOT)
+)
+# about 28 sec
+stopCluster(myCluster)
+
+### Getting the chains together
+if(howsave == "matrix"){
+  mcmc <- mcmcs[[1]]
+  if(Nchains > 1){
+    for(chain in 2:Nchains){
+      mcmcs[[chain]]$all[,"chain"] <- rep(chain, dim(mcmcs[[chain]]$all)[1])
+      mcmc$all <- rbind(mcmc$all, mcmcs[[chain]]$all)
+      mcmc$inits[[chain]] <- mcmcs[[chain]]$inits[[1]]
+      mcmc$last[[chain]] <- mcmcs[[chain]]$last[[1]]
+    }
+  }
+  mcmc$Nchains <- Nchains
+}
+
+if(howsave == "list"){
+  mcmc <- mcmcs[[1]]
+  if(Nchains > 1){
+    for(chain in 2:Nchains){
+      mcmc[[chain]] <- mcmcs[[chain]][[1]]
+      mcmc$inits[[chain]] <- mcmcs[[chain]]$inits[[1]]
+      mcmc$last[[chain]] <- mcmcs[[chain]]$last[[1]]
+    }
+  }
+  mcmc$Nchains <- Nchains
+}
+
 
 
 
@@ -917,13 +1048,15 @@ for(ch in 1:Nchains){
 # Red=1, Green=2, Blue=3, since even the real cluster labels are ordered in such a way
 perm <- list()
 perm[[1]] <- c(1, 3, 2)
-perm[[2]] <- c(3, 2, 1)
-perm[[3]] <- c(3, 2, 1)
+perm[[2]] <- c(1, 2, 3)
+perm[[3]] <- c(2, 3, 1)
 perm[[4]] <- c(1, 2, 3)
 # perm[[ch]][1] contains which old cluster should be the new first one (for chain ch)
 # ... and so on
 
 permmcmc <- PermuteClusterLabels(mcmc, perm)
+# wait a while for relabelling...
+
 par(mfrow = c(2, 2), mar = c(3.5,3.5,0.8,0.8))
 for(ch in 1:Nchains){
   for(i in 1:1){
@@ -974,7 +1107,9 @@ sumch$quantiles[grep("mu", rownames(sumch$quantiles)),]
 
 ### An easy way for obtaining cluster probabilities
 ### is by the sampled U values
-Us <- mcmc$all[,c("chain", paste0("U[",1:n,"]"))] # remember, they have values in 0, ..., K-1
+# remember, they have values in 0, ..., K-1
+#Us <- mcmc$all[,c("chain", paste0("U[",1:n,"]"))] # original sample
+Us <- permmcmc$all[,c("chain", paste0("U[",1:n,"]"))] # already permuted sample
 clusteringU <- matrix(-1, nrow = as.numeric(n), ncol = Nchains)
 certaintyU <- matrix(-1, nrow = as.numeric(n), ncol = Nchains)
 for(i in 1:n){
@@ -1079,7 +1214,7 @@ library(parallel)
 myCluster <- makeCluster(mcmc$Nchains)
 system.time(
   pmcmcs <- parLapply(myCluster, 1:mcmc$Nchains, calculate_probs_for_chain,
-                      mcmc = mcmc,
+                      mcmc = permmcmc,
                       Ynew = Ynew, Xnew = Xnew, Idnew = Idnew,
                       thin = probthin, start = mcmc$B+1, end = mcmc$BM,
                       RROOT = RROOT, CROOT = CROOT)
@@ -1090,7 +1225,6 @@ colnames(pmcmcs[[1]])
 # pUnewk - approximated probability
 # pUerror - error of approximation from pmvnorm
 # pUinform - inform indicator from pmvnorm (0 = converged, 1 = problems)
-pmcmcs[[1]]$
 
 COL <- rainbow_hcl(K, c = 80, l = 50)
 ch <- 1 # choose some chain
