@@ -11,4 +11,4 @@ Subdirectories:
 * Rfun: implemented ".R" functions and scripts
 * RData: saved ".RData" files
 
-Run "tutorial.R" to know how to use implemented method.
+Run "tutorial.R" to know how to use the method.
