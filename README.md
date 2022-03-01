@@ -1,10 +1,9 @@
 # ClassNumOrdBin
 
 This repository contains implemented method used in paper
-"Classification Based on Multivariate Mixed Type Longitudinal Data
-with an application to the EU-SILC database"
-by Jan Vávra and Arnošt Komárek
-Charles University, Prague, Czech Republic
+### Classification Based on Multivariate Mixed Type Longitudinal Data with an application to the EU-SILC database
+#### by Jan Vávra and Arnošt Komárek
+#### Charles University, Prague, Czech Republic
 
 Subdirectories:
 * Cfun: implemented ".c" functions
