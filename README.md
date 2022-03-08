@@ -8,7 +8,8 @@ This repository contains implemented method used in paper
 
 Subdirectories:
 * Cfun: implemented ".c" functions, ".h" headers, ".o" and ".dll" (for Windows)
-* Rfun: implemented ".R" functions and scripts
+* Rfun: implemented ".R" functions and scripts (including "tutorial.R")
+* Figures: saved figures
 * RData: saved ".RData" files
 
-Run "tutorial.R" to know how to use the method.
+Run "tutorial.R" in "Rfun" directory to know how to use the method.
